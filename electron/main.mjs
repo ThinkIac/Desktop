@@ -1,10 +1,12 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { createServer } from 'node:net'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureRuntime, startRuntime, waitForReady } from './runtime-manager.mjs'
 
 let runtimeProcess
+let splash
+let starting = false
 
 async function availablePort() {
   return new Promise((resolve, reject) => {
@@ -28,8 +30,8 @@ function showStatus(splash, message) {
 }
 
 async function boot() {
-  await app.whenReady()
-  const splash = createSplash()
+  if (starting) return
+  starting = true
   try {
     const rootDir = join(app.getPath('userData'), 'local')
     const dataDir = join(rootDir, 'data')
@@ -44,11 +46,19 @@ async function boot() {
     window.once('ready-to-show', () => { window.show(); splash.close() })
     await window.loadURL(readyUrl.replace(installed.runtime.readinessPath, '/'))
   } catch (error) {
-    showStatus(splash, `Falha: ${error.message}`)
+    runtimeProcess?.kill()
+    runtimeProcess = undefined
+    if (!splash.isDestroyed()) splash.webContents.send('runtime-failure', error.message)
     console.error(error)
+  } finally {
+    starting = false
   }
 }
 
+app.whenReady().then(() => {
+  splash = createSplash()
+  ipcMain.handle('runtime-retry', boot)
+  splash.webContents.once('did-finish-load', boot)
+})
 app.on('window-all-closed', () => app.quit())
 app.on('before-quit', () => runtimeProcess?.kill())
-boot()

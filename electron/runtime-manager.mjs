@@ -42,14 +42,21 @@ export async function latestRuntimeRelease(onProgress) {
   onProgress('Consultando a release mais atual do ThinkIac…')
   const releases = await fetchJson(RELEASES_URL)
   assert(Array.isArray(releases), 'Resposta de releases inválida.')
-  const release = releases.find((candidate) => assetByName(candidate, 'runtime-manifest.json'))
-  assert(release, 'Nenhuma release com runtime-manifest.json foi encontrada.')
-  const manifestAsset = assetByName(release, 'runtime-manifest.json')
-  const manifest = await fetchJson(manifestAsset.browser_download_url)
-  const runtime = validateManifest(manifest)
-  const archiveAsset = assetByName(release, runtime.platform.asset)
-  assert(archiveAsset, `A release não contém ${runtime.platform.asset}.`)
-  return { release, manifest, runtime, archiveUrl: archiveAsset.browser_download_url }
+  const ignored = []
+  for (const release of releases) {
+    const manifestAsset = assetByName(release, 'runtime-manifest.json')
+    if (!manifestAsset || release.draft) continue
+    try {
+      const manifest = await fetchJson(manifestAsset.browser_download_url)
+      const runtime = validateManifest(manifest)
+      const archiveAsset = assetByName(release, runtime.platform.asset)
+      assert(archiveAsset, `A release não contém ${runtime.platform.asset}.`)
+      return { release, manifest, runtime, archiveUrl: archiveAsset.browser_download_url }
+    } catch (error) {
+      ignored.push(`${release.tag_name || 'sem tag'}: ${error.message}`)
+    }
+  }
+  throw new Error(`Nenhuma release Windows compatível foi encontrada.${ignored.length ? ` Última incompatível: ${ignored[0]}` : ''}`)
 }
 
 async function download(url, destination) {
