@@ -1,0 +1,32 @@
+{
+  "name": "thinkiac-desktop",
+  "version": "1.0.0",
+  "description": "Bootstrap Electron para o Runtime local do ThinkIac",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "check": "node --check electron/main.mjs && node --check electron/runtime-manager.mjs",
+    "build:win": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1",
+    "npm": "^10.9.2"
+  },
+  "devDependencies": {
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.thinkiac.desktop",
+    "productName": "ThinkIac",
+    "asar": true,
+    "files": ["electron/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }]
+    },
+    "portable": { "artifactName": "ThinkIac-${version}-win-x64.exe" }
+  }
+}
+
