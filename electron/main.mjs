@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { createServer } from 'node:net'
 import { existsSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureRuntime, startRuntime, waitForReady } from './runtime-manager.mjs'
 
@@ -40,6 +41,7 @@ async function boot() {
   try {
     const rootDir = join(app.getPath('userData'), 'local')
     const dataDir = join(rootDir, 'data')
+    await mkdir(dataDir, { recursive: true })
     const installed = await ensureRuntime({ rootDir, npmCli: npmCliPath(), electronVersion: process.versions.electron, onProgress: (message) => showStatus(splash, message) })
     showStatus(splash, 'Iniciando servidor local…')
     const port = await availablePort()
