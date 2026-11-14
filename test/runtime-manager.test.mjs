@@ -8,10 +8,10 @@ test('consulta as releases oficiais do Runtime', () => {
 
 test('aceita apenas um manifesto compatível', () => {
   const runtime = validateManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     runtime: {
-      version: '1.0.0', asset: 'thinkiac-runtime-1.0.0.zip',
-      sha256: 'a'.repeat(64), entrypoint: 'index.js', readinessPath: '/__ready'
+      version: '1.0.0', entrypoint: 'index.js', readinessPath: '/__ready',
+      platforms: { 'win32-x64': { asset: 'thinkiac-runtime-win-x64-1.0.0.zip', sha256: 'a'.repeat(64), nodeEntrypoint: 'node/node.exe' } }
     }
   })
   assert.equal(runtime.version, '1.0.0')

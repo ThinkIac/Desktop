@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,9 +20,12 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm version 1.0.0-ci.${{ github.run_number }} --no-git-tag-version
       - run: npm run build:win
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
         with:
-          name: ThinkIac-win-x64
-          path: dist/*.exe
-          if-no-files-found: error
+          tag_name: desktop-main-${{ github.sha }}
+          name: ThinkIac Desktop ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: true
+          files: dist/*.exe

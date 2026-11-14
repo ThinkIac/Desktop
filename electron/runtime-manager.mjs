@@ -20,13 +20,16 @@ function assetByName(release, name) {
 
 export function validateManifest(manifest) {
   const runtime = manifest?.runtime
-  assert(manifest?.schemaVersion === 1, 'Manifesto do Runtime incompatível.')
+  assert(manifest?.schemaVersion === 2, 'Manifesto do Runtime incompatível.')
   assert(typeof runtime?.version === 'string' && /^[A-Za-z0-9._-]+$/.test(runtime.version), 'Versão do Runtime inválida.')
-  assert(typeof runtime?.asset === 'string' && basename(runtime.asset) === runtime.asset && runtime.asset.endsWith('.zip'), 'Asset do Runtime inválido.')
-  assert(typeof runtime?.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(runtime.sha256), 'SHA-256 do Runtime inválido.')
   assert(typeof runtime?.entrypoint === 'string' && runtime.entrypoint === 'index.js', 'Entrypoint do Runtime não suportado.')
   assert(typeof runtime?.readinessPath === 'string' && runtime.readinessPath.startsWith('/'), 'Readiness do Runtime inválida.')
-  return runtime
+  const platform = runtime.platforms?.['win32-x64']
+  assert(platform && typeof platform === 'object', 'A release não possui Runtime para Windows x64.')
+  assert(typeof platform.asset === 'string' && basename(platform.asset) === platform.asset && platform.asset.endsWith('.zip'), 'Asset do Runtime inválido.')
+  assert(typeof platform.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(platform.sha256), 'SHA-256 do Runtime inválido.')
+  assert(platform.nodeEntrypoint === 'node/node.exe', 'Node do Runtime inválido.')
+  return { ...runtime, platform }
 }
 
 export async function fetchJson(url) {
@@ -44,8 +47,8 @@ export async function latestRuntimeRelease(onProgress) {
   const manifestAsset = assetByName(release, 'runtime-manifest.json')
   const manifest = await fetchJson(manifestAsset.browser_download_url)
   const runtime = validateManifest(manifest)
-  const archiveAsset = assetByName(release, runtime.asset)
-  assert(archiveAsset, `A release não contém ${runtime.asset}.`)
+  const archiveAsset = assetByName(release, runtime.platform.asset)
+  assert(archiveAsset, `A release não contém ${runtime.platform.asset}.`)
   return { release, manifest, runtime, archiveUrl: archiveAsset.browser_download_url }
 }
 
@@ -64,31 +67,7 @@ function isInside(parent, candidate) {
   return pathFromParent !== '' && !pathFromParent.startsWith('..') && !pathFromParent.startsWith('/')
 }
 
-async function run(command, args, options) {
-  await new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, { ...options, stdio: 'inherit', windowsHide: true })
-    child.once('error', reject)
-    child.once('exit', (code) => code === 0 ? resolvePromise() : reject(new Error(`Comando falhou com código ${code}.`)))
-  })
-}
-
-export async function installRuntimeDependencies({ runtimeDir, npmCli, electronVersion, onProgress }) {
-  if (existsSync(join(runtimeDir, 'node_modules'))) return
-  assert(npmCli && existsSync(npmCli), 'O instalador de dependências do Desktop não foi encontrado.')
-  onProgress('Instalando dependências locais do Runtime…')
-  await run(process.execPath, [npmCli, 'ci', '--omit=dev'], {
-    cwd: runtimeDir,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      npm_config_runtime: 'electron',
-      npm_config_target: electronVersion,
-      npm_config_disturl: 'https://electronjs.org/headers'
-    }
-  })
-}
-
-export async function ensureRuntime({ rootDir, npmCli, electronVersion, onProgress = () => {} }) {
+export async function ensureRuntime({ rootDir, onProgress = () => {} }) {
   const { runtime, archiveUrl } = await latestRuntimeRelease(onProgress)
   const runtimeRoot = join(rootDir, 'runtime')
   const destination = join(runtimeRoot, runtime.version)
@@ -96,8 +75,7 @@ export async function ensureRuntime({ rootDir, npmCli, electronVersion, onProgre
   if (existsSync(marker)) {
     try {
       const installed = JSON.parse(await readFile(marker, 'utf8'))
-      if (installed.sha256 === runtime.sha256) {
-        await installRuntimeDependencies({ runtimeDir: destination, npmCli, electronVersion, onProgress })
+      if (installed.sha256 === runtime.platform.sha256) {
         return { runtime, directory: destination }
       }
     } catch {}
@@ -109,14 +87,15 @@ export async function ensureRuntime({ rootDir, npmCli, electronVersion, onProgre
   try {
     onProgress('Baixando Runtime verificado…')
     await download(archiveUrl, archive)
-    assert((await sha256(archive)).toLowerCase() === runtime.sha256.toLowerCase(), 'A verificação SHA-256 do Runtime falhou.')
+    assert((await sha256(archive)).toLowerCase() === runtime.platform.sha256.toLowerCase(), 'A verificação SHA-256 do Runtime falhou.')
     onProgress('Extraindo Runtime local…')
     await mkdir(staging, { recursive: true })
     await extract(archive, { dir: staging })
     const extracted = join(staging, 'thinkiac-runtime')
     assert(existsSync(extracted) && isInside(staging, extracted), 'O ZIP não contém a raiz esperada do Runtime.')
-    await writeFile(join(extracted, '.thinkiac-runtime.json'), JSON.stringify({ version: runtime.version, sha256: runtime.sha256, source: REPOSITORY_URL }, null, 2))
-    await installRuntimeDependencies({ runtimeDir: extracted, npmCli, electronVersion, onProgress })
+    assert(existsSync(join(extracted, 'node_modules')), 'O Runtime Windows não contém node_modules.')
+    assert(existsSync(join(extracted, runtime.platform.nodeEntrypoint)), 'O Runtime Windows não contém node.exe.')
+    await writeFile(join(extracted, '.thinkiac-runtime.json'), JSON.stringify({ version: runtime.version, sha256: runtime.platform.sha256, source: REPOSITORY_URL }, null, 2))
     await rm(destination, { recursive: true, force: true })
     await rename(extracted, destination)
     return { runtime, directory: destination }
@@ -128,9 +107,9 @@ export async function ensureRuntime({ rootDir, npmCli, electronVersion, onProgre
 
 export function startRuntime({ directory, runtime, port, dataDir }) {
   const entrypoint = join(directory, runtime.entrypoint)
-  const child = spawn(process.execPath, [entrypoint], {
+  const child = spawn(join(directory, runtime.platform.nodeEntrypoint), [entrypoint], {
     cwd: directory,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', PORT: String(port), THINKIAC_DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(port), THINKIAC_DATA_DIR: dataDir },
     stdio: 'pipe',
     windowsHide: true
   })
