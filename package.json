@@ -1,13 +1,13 @@
 {
   "name": "thinkiac-desktop",
   "version": "1.0.0",
-  "description": "Bootstrap Electron para o Runtime local do ThinkIac",
+  "description": "ThinkIac Cloud e runtime local no mesmo aplicativo",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check electron/main.mjs && node --check electron/runtime-manager.mjs",
+    "check": "node --check electron/main.mjs && node --check electron/runtime-manager.mjs && node --check electron/cloud.mjs && node --check electron/window-preload.cjs",
     "build:win": "electron-builder --win portable"
   },
   "dependencies": {
@@ -21,6 +21,8 @@
     "appId": "com.thinkiac.desktop",
     "productName": "ThinkIac",
     "asar": true,
+    "protocols": [{ "name": "ThinkIac", "schemes": ["thinkiac"] }],
+    "extraResources": [{ "from": "runtime-bundle", "to": "runtime-bundle" }],
     "files": ["electron/**/*", "package.json"],
     "win": {
       "icon": "build/icon.ico",
